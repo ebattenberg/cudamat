@@ -9,7 +9,6 @@
 #define ERROR_TRANSPOSEDNESS -7
 #define ERROR_NOT_ON_DEVICE -8
 #define ERROR_UNSUPPORTED -9
-#define CUBLAS_MEMORY_ERROR -10
 
 struct cudamat {
     float* data_host;

@@ -30,8 +30,9 @@ extern const char* get_last_cuda_error() {
 
 extern int cublas_init() {
     cublasInit();
-    if (check_cublas_error())
-        return CUBLAS_ERROR;
+	cublasStatus status = cublasGetError();
+    if (status)
+        return status;
     else
         return 0;
 }
@@ -115,12 +116,13 @@ extern int allocate_device_memory(cudamat* mat) {
     stat = cublasAlloc(len, sizeof(mat->data_device[0]), (void**)&mat->data_device);
 	err = cublasGetError();
 
-    if (stat != CUBLAS_STATUS_SUCCESS || err != CUBLAS_STATUS_SUCCESS) {
+    if (stat != CUBLAS_STATUS_SUCCESS) {
 		checkCUDAError();
-		if (stat == CUBLAS_STATUS_ALLOC_FAILED || err == CUBLAS_STATUS_ALLOC_FAILED)
-			return CUBLAS_MEMORY_ERROR;
-		else
-			return CUBLAS_ERROR;
+		return stat;
+	}
+    if (err != CUBLAS_STATUS_SUCCESS) {
+		checkCUDAError();
+		return err;
     }
 
     mat->on_device = 1;
@@ -133,8 +135,9 @@ extern int copy_to_host(cudamat* mat) {
     if (mat->on_device) {
             cublasGetVector(len, sizeof(mat->data_host[0]), mat->data_device, 1, mat->data_host, 1);
 
-        if (check_cublas_error())
-            return CUBLAS_ERROR;
+			cublasStatus status = cublasGetError();
+			if (status)
+				return status;
     } else
        return ERROR_NOT_ON_DEVICE;
  
@@ -156,8 +159,9 @@ extern int copy_to_device(cudamat* mat) {
 
     cublasSetVector(len, sizeof(mat->data_host[0]), mat->data_host, 1, mat->data_device, 1);
     
-    if (check_cublas_error())
-        return CUBLAS_ERROR;
+	cublasStatus status = cublasGetError();
+	if (status)
+		return status;
 
     return 0;
 }
@@ -170,8 +174,9 @@ extern int copy_on_device(cudamat* mat1, cudamat* mat2) {
 
     cublasScopy(len, mat1->data_device, 1, mat2->data_device, 1);
 
-    if (check_cublas_error())
-        return CUBLAS_ERROR;
+	cublasStatus status = cublasGetError();
+	if (status)
+		return status;
     else
         return 0;
 }
@@ -252,9 +257,13 @@ extern int free_device_memory(cudamat* mat) {
         stat = cublasFree(mat->data_device);
         mat->on_device = 0;
 
-        if (stat != CUBLAS_STATUS_SUCCESS || check_cublas_error())
-            return CUBLAS_ERROR;
-    }
+        if (stat != CUBLAS_STATUS_SUCCESS)
+            return stat;
+
+		stat = cublasGetError();
+		if (stat != CUBLAS_STATUS_SUCCESS)
+			return stat;
+	}
 
     return 0;
 }
@@ -1227,8 +1236,9 @@ extern int dot(cudamat* mat1, cudamat* mat2, cudamat* target, float beta, float 
                 mat2->data_device, mat2->size[0],
                 beta, target->data_device, target->size[0]);
 
-    if (check_cublas_error())
-        return CUBLAS_ERROR;
+	cublasStatus status = cublasGetError();
+	if (status != CUBLAS_STATUS_SUCCESS)
+		return status;
 
     if (SYNC_THREADS) 
         cudaThreadSynchronize();
@@ -1255,8 +1265,9 @@ extern float vdot(cudamat* mat1, cudamat* mat2, int* err_code) {
 
     res = cublasSdot(len, mat1->data_device, 1, mat2->data_device, 1);
 
-    if (check_cublas_error()) {
-        *err_code = CUBLAS_ERROR;
+	cublasStatus status = cublasGetError();
+	if (status != CUBLAS_STATUS_SUCCESS) {
+        *err_code = status;
         return -1.;
     } else {
         *err_code = 0;
@@ -1280,8 +1291,9 @@ extern int add_mult(cudamat* mat1, cudamat* mat2, float alpha) {
 
     cublasSaxpy(len, alpha, mat2->data_device, 1, mat1->data_device, 1);
 
-    if (check_cublas_error())
-        return CUBLAS_ERROR;
+	cublasStatus status = cublasGetError();
+    if (status != CUBLAS_STATUS_SUCCESS)
+        return status;
 
     return 0;
 }
@@ -1302,8 +1314,9 @@ extern int add_elementwise(cudamat* mat1, cudamat* mat2, cudamat* target) {
     if (mat1 == target) {
         cublasSaxpy(len, 1, mat2->data_device, 1, mat1->data_device, 1);
  
-        if (check_cublas_error())
-            return CUBLAS_ERROR;
+		cublasStatus status = cublasGetError();
+		if (status != CUBLAS_STATUS_SUCCESS)
+			return status;
 
     } else {
         kAdd<<<NUM_VECTOR_OP_BLOCKS(len),NUM_VECTOR_OP_THREADS_PER_BLOCK(len)>>>(mat1->data_device, mat2->data_device, target->data_device, len);
@@ -1420,8 +1433,9 @@ extern int mult_by_scalar(cudamat* mat, float alpha, cudamat* target) {
     if (mat == target) {
         cublasSscal(len, alpha, mat->data_device, 1);
  
-        if (check_cublas_error())
-            return CUBLAS_ERROR;
+		cublasStatus status = cublasGetError();
+		if (status != CUBLAS_STATUS_SUCCESS)
+			return status;
 
     } else {
         kMultScalar<<<NUM_VECTOR_OP_BLOCKS(len),NUM_VECTOR_OP_THREADS_PER_BLOCK(len)>>>(mat->data_device, alpha, target->data_device, len);
@@ -1484,10 +1498,11 @@ extern float euclid_norm(cudamat* mat, int* err_code) {
         return -1.;
     }
 
-    float res = cublasSnrm2(len, mat->data_device, 1);
+	float res = cublasSnrm2(len, mat->data_device, 1);
 
-    if (check_cublas_error()) {
-        *err_code = CUBLAS_ERROR;
+	cublasStatus status = cublasGetError();
+	if (status != CUBLAS_STATUS_SUCCESS) {
+        *err_code = status;
         return -1.;
     } else {
         *err_code = 0;
@@ -1505,8 +1520,9 @@ extern float manhattan_norm(cudamat* mat, int* err_code) {
 
     float res = cublasSasum(len, mat->data_device, 1);
 
-    if (check_cublas_error()) {
-        *err_code = CUBLAS_ERROR;
+	cublasStatus status = cublasGetError();
+	if (status != CUBLAS_STATUS_SUCCESS) {
+        *err_code = status;
         return -1.;
     } else {
         *err_code = 0;
