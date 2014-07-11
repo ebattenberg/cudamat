@@ -110,13 +110,17 @@ extern void cuda_sync_threads() {
 extern int allocate_device_memory(cudamat* mat) {
     int len = mat->size[0]*mat->size[1];
 
-    cublasStatus stat;
+    cublasStatus stat, err;
 
     stat = cublasAlloc(len, sizeof(mat->data_device[0]), (void**)&mat->data_device);
+	err = cublasGetError();
 
-    if (stat != CUBLAS_STATUS_SUCCESS || check_cublas_error()) {
-        checkCUDAError();
-        return CUBLAS_ERROR;
+    if (stat != CUBLAS_STATUS_SUCCESS || err != CUBLAS_STATUS_SUCCESS) {
+		checkCUDAError();
+		if (stat == CUBLAS_STATUS_ALLOC_FAILED || err == CUBLAS_STATUS_ALLOC_FAILED)
+			return CUBLAS_MEMORY_ERROR;
+		else
+			return CUBLAS_ERROR;
     }
 
     mat->on_device = 1;
