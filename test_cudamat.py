@@ -3,9 +3,7 @@ import nose
 import cudamat as cm
 
 def setup():
-    err = cm.cublas_init()
-    if err:
-        raise cm.CUDAMatException('error intializing cublas')
+    cm.cublas_init()
 
 def teardown():
     cm.cublas_shutdown()
